@@ -15,6 +15,8 @@ unsigned long coilStartTimes[4] = {0, 0, 0, 0};
 bool simulationMode = false;							// Aktifkan mode simulasi
 int simulatedIGTSignal = LOW;							// Simulasi sinyal IGT (LOW/HIGH)
 int simulatedHallSignals[4] = {HIGH, HIGH, HIGH, HIGH}; // Simulasi sinyal Hall (HIGH = standby, LOW = aktif)
+unsigned long lastDebugTime = 0;						// Waktu terakhir debugging dilakukan
+const unsigned long DEBUG_INTERVAL = 500;				// Interval debugging dalam milidetik (500ms)
 
 void simulateSignals();
 void serialEvent();
@@ -60,56 +62,77 @@ void loop()
 		{
 			if (digitalRead(HALL_PINS[i]) == LOW)
 			{ // Sensor Hall aktif (0V)
-				if (coilStartTimes[i] == 0)
+				if (igtSignal == HIGH)
 				{
-					// Start dwell time
-					coilStartTimes[i] = micros();
-					digitalWrite(COIL_PINS[i], HIGH); // Mulai mengisi coil (dwell)
-				}
+					if (coilStartTimes[i] == 0)
+					{
+						// Start dwell time
+						coilStartTimes[i] = micros();
+						digitalWrite(COIL_PINS[i], HIGH); // Mulai mengisi coil (dwell)
+					}
 
-				// Safe fail: Ensure coil is not active for more than SAFE_FAIL_TIME
-				if (micros() - coilStartTimes[i] > SAFE_FAIL_TIME)
+					// Safe fail: Ensure coil is not active for more than SAFE_FAIL_TIME
+					if (micros() - coilStartTimes[i] > SAFE_FAIL_TIME)
+					{
+						digitalWrite(COIL_PINS[i], LOW); // Matikan coil
+						coilStartTimes[i] = 0;			 // Reset timing
+					}
+				}
+				else
 				{
-					digitalWrite(COIL_PINS[i], LOW); // Matikan coil
-					coilStartTimes[i] = 0;			 // Reset timing
+					// Lepaskan energi coil (trigger pengapian) jika IGT LOW
+					if (coilStartTimes[i] != 0)
+					{
+						digitalWrite(COIL_PINS[i], LOW);
+						coilStartTimes[i] = 0; // Reset waktu coil
+					}
 				}
 			}
 			else
 			{
-				// Check if dwell time has passed
-				if (coilStartTimes[i] != 0 && micros() - coilStartTimes[i] >= DWELL_TIME)
-				{
-					digitalWrite(COIL_PINS[i], LOW); // Lepaskan energi coil (trigger pengapian)
-					coilStartTimes[i] = 0;			 // Reset timing
-				}
+				digitalWrite(COIL_PINS[i], LOW);
+				coilStartTimes[i] = 0;
 			}
 		}
 
 		// Generate tacho signal (mirroring IGT signal)
 		digitalWrite(TACHO_PIN, igtSignal);
+
 		// Debugging output
+		unsigned long currentTime = millis();
+		// if (currentTime - lastDebugTime >= DEBUG_INTERVAL)
+		// {
+		lastDebugTime = currentTime;
 		Serial.print("Hall Signals: ");
 		for (int i = 0; i < 4; i++)
 		{
-			Serial.print(digitalRead(HALL_PINS[i]) == HIGH ? "HIGH " : "LOW ");
+			Serial.print(digitalRead(HALL_PINS[i]) == HIGH ? "1 " : "0 ");
 		}
 		Serial.print(" | Coil States: ");
 		for (int i = 0; i < 4; i++)
 		{
-			Serial.print(digitalRead(COIL_PINS[i]) == HIGH ? "HIGH " : "LOW ");
+			Serial.print(digitalRead(COIL_PINS[i]) == HIGH ? "1 " : "0 ");
 		}
-		Serial.print(" | Coil Start Times: ");
+		Serial.print(" | Dwell Times: ");
 		for (int i = 0; i < 4; i++)
 		{
-			Serial.print(coilStartTimes[i]);
+			if (coilStartTimes[i] != 0)
+			{
+				// Hitung dwell time jika coil aktif
+				Serial.print((micros() - coilStartTimes[i]) / 1000); // Konversi ke milidetik
+				Serial.print("ms ");
+			}
+			else
+			{
+				Serial.print("0ms ");
+			}
 			if (i < 3)
 				Serial.print(", ");
 		}
-		Serial.print(" | IGT Pin: ");
-		Serial.print(igtSignal == HIGH ? "HIGH" : "LOW");
 		Serial.print(" | IGT Signal: ");
-		Serial.print(igtSignal == HIGH ? "HIGH" : "LOW");
+		Serial.print(igtSignal == HIGH ? "1" : "0");
 		Serial.println();
+		// }
 	}
 }
 
@@ -154,11 +177,11 @@ void simulateSignals()
 
 	// Debugging output
 	Serial.print("IGT Signal: ");
-	Serial.print(simulatedIGTSignal == HIGH ? "HIGH" : "LOW");
+	Serial.print(simulatedIGTSignal == HIGH ? "1" : "0");
 	Serial.print(" | Hall Signals: ");
 	for (int i = 0; i < 4; i++)
 	{
-		Serial.print(simulatedHallSignals[i] == HIGH ? "HIGH " : "LOW ");
+		Serial.print(simulatedHallSignals[i] == HIGH ? "1 " : "0 ");
 	}
 	Serial.println();
 	delay(500); // Delay untuk debugging
