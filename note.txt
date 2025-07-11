@@ -1,0 +1,45 @@
+#define IGT_PIN 2           // Input IGT
+#define IGF_PIN 7          // Output IGF
+
+const int hallPins[4] = {A0, A1, A2, A3};
+const int coilPins[4] = {3, 4, 5, 6};
+
+volatile bool igtState = LOW;
+
+void setup() {
+  for (int i = 0; i < 4; i++) {
+    pinMode(hallPins[i], INPUT);
+    pinMode(coilPins[i], OUTPUT);
+    digitalWrite(coilPins[i], LOW);
+  }
+
+  pinMode(IGT_PIN, INPUT);
+  pinMode(IGF_PIN, OUTPUT);
+  digitalWrite(IGF_PIN, LOW);
+
+  attachInterrupt(digitalPinToInterrupt(IGT_PIN), onIGTChange, CHANGE);
+}
+
+void loop() {
+}
+
+void onIGTChange() {
+  igtState = digitalRead(IGT_PIN);
+
+  for (int i = 0; i < 4; i++) {
+    if (digitalRead(hallPins[i]) == LOW) {
+      digitalWrite(coilPins[i], igtState);
+    } else {
+      digitalWrite(coilPins[i], LOW);
+    }
+  }
+  if (igtState == LOW) {
+    sendIGF();
+  }
+}
+
+void sendIGF() {
+  digitalWrite(IGF_PIN, HIGH);
+  delayMicroseconds(300);  //Durasi IGF
+  digitalWrite(IGF_PIN, LOW);
+}
